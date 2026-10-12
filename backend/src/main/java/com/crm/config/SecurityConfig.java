@@ -60,16 +60,23 @@ public class SecurityConfig {
                 .requestMatchers(
                     "/api/v1/auth/login", "/api/v1/auth/login/**",
                     "/auth/login", "/auth/login/**",
+                    "/api/v1/login", "/api/v1/login/**",
                     "/login", "/login/**",
                     "/api/v1/auth/signup", "/api/v1/auth/signup/**",
                     "/auth/signup", "/auth/signup/**",
+                    "/api/v1/signup", "/api/v1/signup/**",
                     "/signup", "/signup/**",
-                    "/api/v1/auth/signup-status", "/auth/signup-status",
-                    "/api/v1/health", "/health", "/", "/error"
+                    "/api/v1/auth/signup-status", "/api/v1/auth/signup-status/**",
+                    "/auth/signup-status", "/auth/signup-status/**",
+                    "/api/v1/signup-status", "/api/v1/signup-status/**",
+                    "/signup-status", "/signup-status/**",
+                    "/api/v1/health", "/api/v1/health/**",
+                    "/health", "/health/**",
+                    "/", "/error"
                 ).permitAll()
-                .requestMatchers("/api/v1/users/active", "/api/v1/users/request-admin-access", "/api/v1/users/admin-access-status").hasAnyRole("ADMIN", "USER")
-                .requestMatchers("/api/v1/admin/**", "/api/v1/users/**", "/api/v1/audit-logs/**", "/api/v1/google-sheets/**").hasRole("ADMIN")
-                .requestMatchers("/api/v1/**").authenticated()
+                .requestMatchers("/api/v1/users/active", "/api/v1/users/request-admin-access", "/api/v1/users/admin-access-status", "/users/active", "/users/request-admin-access", "/users/admin-access-status").hasAnyRole("ADMIN", "USER")
+                .requestMatchers("/api/v1/admin/**", "/api/v1/users/**", "/api/v1/audit-logs/**", "/api/v1/google-sheets/**", "/admin/**", "/users/**", "/audit-logs/**", "/google-sheets/**").hasRole("ADMIN")
+                .requestMatchers("/api/v1/**", "/auth/**", "/me/**", "/profile/**", "/change-password/**").authenticated()
                 .anyRequest().authenticated()
             );
 
