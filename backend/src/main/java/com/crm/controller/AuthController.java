@@ -19,7 +19,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/auth")
+@RequestMapping({"/api/v1/auth", "/auth"})
 @RequiredArgsConstructor
 public class AuthController {
 
@@ -28,14 +28,14 @@ public class AuthController {
     private final UserService userService;
     private final com.crm.repository.UserRepository userRepository;
 
-    @PostMapping("/signup")
+    @PostMapping({"/signup", "/signup/"})
     public ResponseEntity<ApiResponse<UserResponse>> signupUser(@Valid @RequestBody com.crm.dto.request.UserSignupRequest signupRequest) {
         UserResponse response = userService.registerUser(signupRequest);
         return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
                 .body(ApiResponse.ok("Your signup request has been submitted successfully. Please wait for admin approval.", response));
     }
 
-    @GetMapping("/signup-status")
+    @GetMapping({"/signup-status", "/signup-status/"})
     public ResponseEntity<ApiResponse<java.util.Map<String, String>>> checkSignupStatus(@RequestParam String email) {
         String status = userService.getSignupStatus(email);
         String message;
@@ -61,7 +61,7 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok(message, result));
     }
 
-    @PostMapping("/login")
+    @PostMapping({"/login", "/login/"})
     public ResponseEntity<ApiResponse<JwtAuthResponse>> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
         String cleanEmail = loginRequest.getEmail().toLowerCase().trim();
         com.crm.model.User user = userRepository.findByEmail(cleanEmail).orElse(null);
