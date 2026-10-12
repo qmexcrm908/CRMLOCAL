@@ -48,7 +48,20 @@ public class AuditServiceImpl implements AuditService {
     @Override
     @Transactional(readOnly = true)
     public Page<AuditLogResponse> searchAuditLogs(String entityName, Long userId, String action, Pageable pageable) {
-        return auditLogRepository.searchAuditLogs(entityName, userId, action, pageable)
-                .map(auditLogMapper::toResponse);
+        org.springframework.data.jpa.domain.Specification<AuditLog> spec = (root, query, cb) -> {
+            java.util.List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
+            if (entityName != null && !entityName.trim().isEmpty()) {
+                predicates.add(cb.equal(root.get("entityName"), entityName.trim()));
+            }
+            if (userId != null) {
+                predicates.add(cb.equal(root.get("user").get("id"), userId));
+            }
+            if (action != null && !action.trim().isEmpty()) {
+                predicates.add(cb.equal(root.get("action"), action.trim()));
+            }
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
+
+        return auditLogRepository.findAll(spec, pageable).map(auditLogMapper::toResponse);
     }
 }

@@ -20,13 +20,13 @@ public class User {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 100)
+    @Column(nullable = false, length = 255)
     private String name;
 
     @Column(nullable = false, unique = true, length = 150)
     private String email;
 
-    @Column(length = 20)
+    @Column(length = 50)
     private String phone;
 
     @com.fasterxml.jackson.annotation.JsonIgnore

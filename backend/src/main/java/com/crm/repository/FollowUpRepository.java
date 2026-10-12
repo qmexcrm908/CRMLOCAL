@@ -4,6 +4,7 @@ import com.crm.model.FollowUp;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -12,8 +13,17 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
-public interface FollowUpRepository extends JpaRepository<FollowUp, Long> {
+public interface FollowUpRepository extends JpaRepository<FollowUp, Long>, JpaSpecificationExecutor<FollowUp> {
     List<FollowUp> findByLeadIdOrderByScheduledTimeDesc(Long leadId);
+
+    List<FollowUp> findByUserIdAndStatusAndScheduledTimeLessThanOrderByScheduledTimeAsc(Long userId, String status, LocalDateTime now);
+    List<FollowUp> findByStatusAndScheduledTimeLessThanOrderByScheduledTimeAsc(String status, LocalDateTime now);
+
+    List<FollowUp> findByUserIdAndStatusAndScheduledTimeBetweenOrderByScheduledTimeAsc(Long userId, String status, LocalDateTime start, LocalDateTime end);
+    List<FollowUp> findByStatusAndScheduledTimeBetweenOrderByScheduledTimeAsc(String status, LocalDateTime start, LocalDateTime end);
+
+    List<FollowUp> findByUserIdAndStatusAndScheduledTimeGreaterThanOrderByScheduledTimeAsc(Long userId, String status, LocalDateTime endOfDay);
+    List<FollowUp> findByStatusAndScheduledTimeGreaterThanOrderByScheduledTimeAsc(String status, LocalDateTime endOfDay);
 
     @Query("SELECT f FROM FollowUp f WHERE " +
            "(:userId IS NULL OR f.user.id = :userId) AND " +

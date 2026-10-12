@@ -127,14 +127,34 @@ public class FollowUpServiceImpl implements FollowUpService {
     @Override
     @Transactional(readOnly = true)
     public Page<FollowUpResponse> searchFollowUps(Long userId, String status, LocalDateTime start, LocalDateTime end, Pageable pageable) {
-        return followUpRepository.searchFollowUps(userId, status, start, end, pageable)
-                .map(followUpMapper::toResponse);
+        org.springframework.data.jpa.domain.Specification<FollowUp> spec = (root, query, cb) -> {
+            java.util.List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
+            if (userId != null) {
+                predicates.add(cb.equal(root.get("user").get("id"), userId));
+            }
+            if (status != null && !status.trim().isEmpty()) {
+                predicates.add(cb.equal(root.get("status"), status.trim()));
+            }
+            if (start != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("scheduledTime"), start));
+            }
+            if (end != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("scheduledTime"), end));
+            }
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
+
+        return followUpRepository.findAll(spec, pageable).map(followUpMapper::toResponse);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<FollowUpResponse> getOverdueFollowUps(Long userId) {
-        return followUpRepository.findOverdueFollowUps(userId, LocalDateTime.now()).stream()
+        LocalDateTime now = LocalDateTime.now();
+        List<FollowUp> list = (userId != null)
+                ? followUpRepository.findByUserIdAndStatusAndScheduledTimeLessThanOrderByScheduledTimeAsc(userId, "PENDING", now)
+                : followUpRepository.findByStatusAndScheduledTimeLessThanOrderByScheduledTimeAsc("PENDING", now);
+        return list.stream()
                 .map(followUpMapper::toResponse)
                 .toList();
     }
@@ -144,7 +164,10 @@ public class FollowUpServiceImpl implements FollowUpService {
     public List<FollowUpResponse> getTodayFollowUps(Long userId) {
         LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
         LocalDateTime endOfDay = LocalDate.now().atTime(LocalTime.MAX);
-        return followUpRepository.findTodayFollowUps(userId, startOfDay, endOfDay).stream()
+        List<FollowUp> list = (userId != null)
+                ? followUpRepository.findByUserIdAndStatusAndScheduledTimeBetweenOrderByScheduledTimeAsc(userId, "PENDING", startOfDay, endOfDay)
+                : followUpRepository.findByStatusAndScheduledTimeBetweenOrderByScheduledTimeAsc("PENDING", startOfDay, endOfDay);
+        return list.stream()
                 .map(followUpMapper::toResponse)
                 .toList();
     }
@@ -153,7 +176,10 @@ public class FollowUpServiceImpl implements FollowUpService {
     @Transactional(readOnly = true)
     public List<FollowUpResponse> getUpcomingFollowUps(Long userId) {
         LocalDateTime endOfDay = LocalDate.now().atTime(LocalTime.MAX);
-        return followUpRepository.findUpcomingFollowUps(userId, endOfDay).stream()
+        List<FollowUp> list = (userId != null)
+                ? followUpRepository.findByUserIdAndStatusAndScheduledTimeGreaterThanOrderByScheduledTimeAsc(userId, "PENDING", endOfDay)
+                : followUpRepository.findByStatusAndScheduledTimeGreaterThanOrderByScheduledTimeAsc("PENDING", endOfDay);
+        return list.stream()
                 .map(followUpMapper::toResponse)
                 .toList();
     }

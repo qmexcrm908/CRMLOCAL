@@ -19,6 +19,9 @@ public interface LeadAssignmentRepository extends JpaRepository<LeadAssignment, 
 
     List<LeadAssignment> findByLeadIdOrderByAssignedAtDesc(Long leadId);
 
+    @Query("SELECT a FROM LeadAssignment a LEFT JOIN FETCH a.lead l LEFT JOIN FETCH a.user u LEFT JOIN FETCH l.project")
+    List<LeadAssignment> findAllWithLeadAndUser();
+
     List<LeadAssignment> findByUserIdAndIsActiveTrue(Long userId);
 
     boolean existsByLeadIdAndUserIdAndIsActiveTrue(Long leadId, Long userId);

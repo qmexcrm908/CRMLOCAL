@@ -1,30 +1,36 @@
 /**
  * =========================================================================================
- * CALLING CRM — FULL DATABASE PUSH / PULL GOOGLE SHEETS CONTROL ENGINE
+ * CALLING CRM — GOOGLE SHEETS EASY PROJECT, LEAD & EMAIL-BASED ASSIGNMENT ENGINE
  * =========================================================================================
  * 
  * ARCHITECTURE:
- *   Google Sheet (Master Control Interface)
- *     ↕ (HTTPS via Google Apps Script)
+ *   Google Sheet (Human-Friendly Interface: Project Names, Lead Phones, User Emails)
+ *     ↕ (HTTPS via Google Apps Script with X-Sync-Secret)
  *   Spring Boot Backend (/api/v1/google-sheets/pull & /push)
- *     ↕
- *   MySQL Database
+ *     ↕ (JPA / Hibernate Transactions)
+ *   MySQL / PostgreSQL Database
  * 
  * FEATURES:
- * 1. PUSH TO DATABASE: Full Sheet -> Validation -> Transaction -> MySQL DB
- * 2. PULL FROM DATABASE: Full MySQL DB -> Batch 2D Arrays -> Google Sheet
+ * 1. PUSH TO DATABASE:
+ *    • Projects managed by Project Name, Description, Status (no database IDs needed).
+ *    • Leads managed by Project Name, Name, Phone, Email, etc. (no database IDs needed).
+ *    • Lead Assignments managed by Lead Phone + Assign To Email (no database IDs needed).
+ * 2. PULL FROM DATABASE:
+ *    • Automatically displays Project Names, Lead Phone/Names, and Assigned User Emails.
+ *    • Automatically sets up Google Sheets Data Validation Dropdowns for User Emails and Project Names.
  * 3. Master Control Tab: CRM_SYNC_CONTROL
  * 4. Audit Trail Tab: Sync_Log
- * 5. Full Entity Tabs: Roles, Projects, Users, Leads, Lead_Assignments, Calls, Follow_Ups,
- *                      Sales, Notes, Attendance, Admin_Access_Requests, Audit_Logs
  * =========================================================================================
  */
 
 // Configuration
 var CONFIG = {
-  // Live Public Backend URL for Google Sheets cloud integration
-  DEFAULT_BACKEND_URL: "https://procedures-anderson-importance-drivers.trycloudflare.com",
+  // Live Public Backend URL for Google Sheets cloud integration (Tunnel to local backend)
+  DEFAULT_BACKEND_URL: "https://superintendent-fifteen-thumbnails-herein.trycloudflare.com",
   
+  // Google Apps Script Web App & Library URLs
+  WEB_APP_URL: "https://script.google.com/macros/s/AKfycbyTNPUNwZrzXzlQJLmycw6EKxwQXEZC0GzmmLavnoJtSDQdvULcLGDwVMI4YC2Ms-E_yg/exec",
+
   // Shared secret for admin authentication with Spring Boot
   DEFAULT_SECRET: "AKfycbzuicbaYTDeB1xFF925JE2JGp4Q6bETUuwNSCWHyNlApUTWEhhVPFXVKf7cWZc5IAbl",
   
@@ -48,6 +54,7 @@ function onOpen() {
     .addItem("⬆️ PUSH TO DATABASE", "pushToDatabase")
     .addItem("⬇️ PULL FROM DATABASE", "pullFromDatabase")
     .addSeparator()
+    .addItem("🎯 SETUP DROPDOWNS & VALIDATIONS", "setupDropdownsManual")
     .addItem("🧹 CLEAN DUPLICATE TABS", "cleanDuplicateTabs")
     .addItem("📊 SYNC STATUS", "getSyncStatus")
     .addSeparator()
@@ -58,7 +65,7 @@ function onOpen() {
 
 /**
  * =========================================================================================
- * 1. PUSH TO DATABASE (Google Sheet -> Spring Boot -> Entire MySQL Database)
+ * 1. PUSH TO DATABASE (Google Sheet -> Spring Boot -> Database)
  * =========================================================================================
  */
 function pushToDatabase() {
@@ -68,8 +75,10 @@ function pushToDatabase() {
   var confirm = ui.alert(
     "CONFIRM DATABASE PUSH",
     "WARNING:\n" +
-    "This will synchronize the complete Google Sheet data with the CRM database.\n\n" +
-    "Existing database records may be updated. If validation fails, changes will be completely rolled back.\n\n" +
+    "This will synchronize your Google Sheet data with the CRM database.\n\n" +
+    "• Projects will be created/updated by Project Name.\n" +
+    "• Leads will be created/updated with duplicate phone protection.\n" +
+    "• Lead Assignments will resolve users by Email ID and leads by Phone number.\n\n" +
     "Do you want to continue?",
     ui.ButtonSet.YES_NO
   );
@@ -208,16 +217,14 @@ function pushToDatabase() {
         "CRM Database has been synchronized with the latest Google Sheet data.\n\n" +
         "Sync ID: " + syncCode + "\n" +
         "Total Records Updated: " + updatedCount + "\n" +
-        "Status: SUCCESS",
+        "Status: SUCCESS\n\n" +
+        "Projects, Leads, and Email-based Lead Assignments are active.",
         ui.ButtonSet.OK
       );
 
     } else {
       // Failure Handling
-      var errorMsg = "HTTP " + statusCode;
-      if (responseJson) {
-        errorMsg = responseJson.message || responseJson.error || responseText;
-      }
+      var errorMsg = formatHttpErrorMessage(statusCode, responseText, responseJson);
 
       // Update Sync_Log
       logSyncRun(ss, {
@@ -240,8 +247,11 @@ function pushToDatabase() {
       });
 
       ui.alert(
-        "❌ PUSH FAILED",
-        errorMsg + "\n\nDatabase changes have been ROLLED BACK.",
+        "❌ PUSH FAILED (HTTP " + statusCode + ")",
+        "Target URL: " + backendUrl + "\n\n" +
+        "Details: " + errorMsg + "\n\n" +
+        "👉 To update or verify your active connection URL and secret, use:\n" +
+        "CRM SYNC > ⚙️ CONFIGURE CONNECTION",
         ui.ButtonSet.OK
       );
     }
@@ -253,7 +263,7 @@ function pushToDatabase() {
       status: "FAILED",
       message: "PUSH ERROR: " + err.message
     });
-    ui.alert("❌ PUSH ERROR", err.message, ui.ButtonSet.OK);
+    ui.alert("❌ PUSH ERROR", "Connection or Network Error: " + err.message + "\n\nPlease ensure your backend service is active.", ui.ButtonSet.OK);
   } finally {
     lock.releaseLock();
   }
@@ -261,7 +271,7 @@ function pushToDatabase() {
 
 /**
  * =========================================================================================
- * 2. PULL FROM DATABASE (Entire Database -> Spring Boot -> Google Sheet)
+ * 2. PULL FROM DATABASE (Database -> Spring Boot -> Google Sheet)
  * =========================================================================================
  */
 function pullFromDatabase() {
@@ -271,6 +281,7 @@ function pullFromDatabase() {
   var confirm = ui.alert(
     "CONFIRM DATABASE PULL",
     "This will replace the current Google Sheet data with the complete current CRM database snapshot.\n\n" +
+    "Human-readable Project Names, Lead Phones, and User Emails will be populated along with dropdowns.\n\n" +
     "Do you want to continue?",
     ui.ButtonSet.YES_NO
   );
@@ -334,6 +345,9 @@ function pullFromDatabase() {
       // Purge any duplicate or stray tabs (e.g. Sheet1, Lead_Assignments_2, etc.)
       purgeRedundantSheets(ss, Object.keys(tablesMap));
 
+      // Setup/refresh data validation dropdowns for Assign To Email & Project Name
+      setupDropdownValidations(ss);
+
       // Update Sync_Log
       logSyncRun(ss, {
         syncId: syncCode,
@@ -359,15 +373,13 @@ function pullFromDatabase() {
         "Google Sheets has been updated with the complete database snapshot.\n\n" +
         "Sync ID: " + syncCode + "\n" +
         "Total Tables: " + Object.keys(tablesMap).length + "\n" +
-        "Total Records: " + totalRecords,
+        "Total Records: " + totalRecords + "\n\n" +
+        "🎯 Dropdown validations for User Emails & Project Names have been applied.",
         ui.ButtonSet.OK
       );
 
     } else {
-      var errorMsg = "HTTP " + statusCode;
-      if (responseJson) {
-        errorMsg = responseJson.message || responseJson.error || responseText;
-      }
+      var errorMsg = formatHttpErrorMessage(statusCode, responseText, responseJson);
 
       logSyncRun(ss, {
         syncId: "PULL-ERR",
@@ -391,7 +403,7 @@ function pullFromDatabase() {
         "❌ PULL FAILED (HTTP " + statusCode + ")",
         "Target URL: " + backendUrl + "\n\n" +
         "Details: " + errorMsg + "\n\n" +
-        "👉 To update or verify your active connection URL, use:\n" +
+        "👉 To update or verify your active connection URL and secret, use:\n" +
         "CRM SYNC > ⚙️ CONFIGURE CONNECTION",
         ui.ButtonSet.OK
       );
@@ -404,9 +416,31 @@ function pullFromDatabase() {
       status: "FAILED",
       message: "PULL ERROR: " + err.message
     });
-    ui.alert("❌ PULL ERROR", err.message, ui.ButtonSet.OK);
+    ui.alert("❌ PULL ERROR", "Connection or Network Error: " + err.message + "\n\nPlease ensure your backend service is active.", ui.ButtonSet.OK);
   } finally {
     lock.releaseLock();
+  }
+}
+
+/**
+ * Helper to produce user-friendly error messages based on HTTP status code
+ */
+function formatHttpErrorMessage(statusCode, rawText, jsonResponse) {
+  var serverMsg = "";
+  if (jsonResponse) {
+    serverMsg = jsonResponse.message || jsonResponse.error || "";
+  }
+  
+  if (statusCode === 401) {
+    return "Authentication required. Please verify the connection credentials (Shared Secret). " + (serverMsg ? "[" + serverMsg + "]" : "");
+  } else if (statusCode === 403) {
+    return "Connection authenticated but access is forbidden. " + (serverMsg ? "[" + serverMsg + "]" : "");
+  } else if (statusCode === 404) {
+    return "Connection URL or API endpoint not found. Please verify the URL. " + (serverMsg ? "[" + serverMsg + "]" : "");
+  } else if (statusCode >= 500) {
+    return "Internal server error on backend (" + statusCode + "): " + (serverMsg || rawText || "Please check server logs.");
+  } else {
+    return (serverMsg || rawText || ("HTTP Error " + statusCode));
   }
 }
 
@@ -464,7 +498,95 @@ function writeTableSheet(ss, sheetName, headers, rows) {
 
 /**
  * =========================================================================================
- * 3. CONTROL PANEL TAB (CRM_SYNC_CONTROL)
+ * 3. SETUP DROPDOWN DATA VALIDATIONS
+ * =========================================================================================
+ */
+function setupDropdownsManual() {
+  var ss = getSpreadsheet();
+  setupDropdownValidations(ss);
+  SpreadsheetApp.getUi().alert("🎯 DROPDOWNS CONFIGURED", "Data validation dropdowns for User Emails and Project Names have been successfully configured on Leads and Lead_Assignments sheets.", SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+function setupDropdownValidations(ss) {
+  try {
+    var usersSheet = ss.getSheetByName("Users");
+    var projectsSheet = ss.getSheetByName("Projects");
+    var leadsSheet = ss.getSheetByName("Leads");
+    var assignmentsSheet = ss.getSheetByName("Lead_Assignments");
+
+    // 1. Setup Dropdowns on Lead_Assignments Sheet
+    if (assignmentsSheet) {
+      // Find header column indices
+      var assignHeaders = assignmentsSheet.getRange(1, 1, 1, assignmentsSheet.getLastColumn() || 13).getValues()[0];
+      var projectColIdx = findColumnIndex(assignHeaders, ["project_name", "project"]);
+      var userEmailColIdx = findColumnIndex(assignHeaders, ["assign_to_email", "user_email", "assigned_to_email", "email"]);
+
+      // Project Dropdown on Lead_Assignments
+      if (projectColIdx !== -1 && projectsSheet && projectsSheet.getLastRow() > 1) {
+        var projectRange = projectsSheet.getRange("B2:B" + Math.max(projectsSheet.getLastRow(), 2));
+        var projectRule = SpreadsheetApp.newDataValidation()
+          .requireValueInRange(projectRange, true)
+          .setAllowInvalid(true)
+          .build();
+        assignmentsSheet.getRange(2, projectColIdx + 1, Math.max(assignmentsSheet.getMaxRows() - 1, 100), 1).setDataValidation(projectRule);
+      }
+
+      // User Email Dropdown on Lead_Assignments
+      if (userEmailColIdx !== -1 && usersSheet && usersSheet.getLastRow() > 1) {
+        var userEmailRange = usersSheet.getRange("C2:C" + Math.max(usersSheet.getLastRow(), 2));
+        var emailRule = SpreadsheetApp.newDataValidation()
+          .requireValueInRange(userEmailRange, true)
+          .setAllowInvalid(true)
+          .build();
+        assignmentsSheet.getRange(2, userEmailColIdx + 1, Math.max(assignmentsSheet.getMaxRows() - 1, 100), 1).setDataValidation(emailRule);
+      }
+    }
+
+    // 2. Setup Dropdowns on Leads Sheet
+    if (leadsSheet) {
+      var leadHeaders = leadsSheet.getRange(1, 1, 1, leadsSheet.getLastColumn() || 30).getValues()[0];
+      var leadProjColIdx = findColumnIndex(leadHeaders, ["project_name", "project"]);
+      var leadAssignColIdx = findColumnIndex(leadHeaders, ["assigned_to_email", "assign_to_email", "user_email"]);
+
+      // Project Dropdown on Leads
+      if (leadProjColIdx !== -1 && projectsSheet && projectsSheet.getLastRow() > 1) {
+        var projectRange = projectsSheet.getRange("B2:B" + Math.max(projectsSheet.getLastRow(), 2));
+        var projectRule = SpreadsheetApp.newDataValidation()
+          .requireValueInRange(projectRange, true)
+          .setAllowInvalid(true)
+          .build();
+        leadsSheet.getRange(2, leadProjColIdx + 1, Math.max(leadsSheet.getMaxRows() - 1, 100), 1).setDataValidation(projectRule);
+      }
+
+      // User Email Dropdown on Leads
+      if (leadAssignColIdx !== -1 && usersSheet && usersSheet.getLastRow() > 1) {
+        var userEmailRange = usersSheet.getRange("C2:C" + Math.max(usersSheet.getLastRow(), 2));
+        var emailRule = SpreadsheetApp.newDataValidation()
+          .requireValueInRange(userEmailRange, true)
+          .setAllowInvalid(true)
+          .build();
+        leadsSheet.getRange(2, leadAssignColIdx + 1, Math.max(leadsSheet.getMaxRows() - 1, 100), 1).setDataValidation(emailRule);
+      }
+    }
+  } catch (e) {
+    Logger.log("Error configuring data validation dropdowns: " + e.message);
+  }
+}
+
+function findColumnIndex(headers, candidateNames) {
+  if (!headers || headers.length === 0) return -1;
+  for (var i = 0; i < headers.length; i++) {
+    var h = String(headers[i]).trim().toLowerCase();
+    for (var j = 0; j < candidateNames.length; j++) {
+      if (h === candidateNames[j].toLowerCase()) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * =========================================================================================
+ * 4. CONTROL PANEL TAB (CRM_SYNC_CONTROL)
  * =========================================================================================
  */
 function updateControlPanel(ss, info) {
@@ -476,7 +598,7 @@ function updateControlPanel(ss, info) {
   // Build styled dashboard
   sheet.setColumnWidth(1, 40);
   sheet.setColumnWidth(2, 220);
-  sheet.setColumnWidth(3, 400);
+  sheet.setColumnWidth(3, 450);
 
   // Title Banner
   sheet.getRange("B2:C2").merge()
@@ -502,7 +624,7 @@ function updateControlPanel(ss, info) {
     ["Last Sync Status:", status],
     ["Last Sync Message:", msg],
     ["Backend API Endpoint:", getBackendUrl()],
-    ["Managed Tables:", "Roles, Projects, Users, Leads, Lead_Assignments, Calls, Follow_Ups, Sales, Notes, Attendance, Admin_Access_Requests"]
+    ["Management Features:", "Easy Projects (Name), Easy Leads (Project + Phone), Easy Assignments (User Email)"]
   ];
 
   for (var i = 0; i < fields.length; i++) {
@@ -517,7 +639,7 @@ function updateControlPanel(ss, info) {
 
   // Instructions
   sheet.getRange("B11:C11").merge()
-       .setValue("📋 HOW TO USE:\n• Use the 'CRM SYNC' menu at the top of the screen to PUSH or PULL.\n• PUSH: Google Sheet data replaces/updates the CRM database with full validation.\n• PULL: Exports the full database snapshot into this spreadsheet.")
+       .setValue("📋 HOW TO USE:\n• Projects: Enter 'Project Name', 'Description', 'Status' in Projects tab.\n• Leads: Enter 'Project Name', 'Name', 'Phone', 'Email', etc. in Leads tab.\n• Lead Assignment: In Lead_Assignments tab, select 'Lead Phone' and 'Assign To Email' from dropdown.\n• PUSH: Google Sheet updates the database with full email/phone ID resolution.\n• PULL: Refreshes sheet with current database snapshot & populates dropdown lists.")
        .setBackground("#F8FAFC")
        .setFontColor("#334155")
        .setFontSize(10)
@@ -548,16 +670,44 @@ function logSyncRun(ss, logData) {
 
 /**
  * =========================================================================================
- * 4. SYNC STATUS & CONFIGURATION
+ * 5. SYNC STATUS & CONFIGURATION
  * =========================================================================================
  */
 function getSyncStatus() {
   var ui = SpreadsheetApp.getUi();
-  try {
-    var backendUrl = getBackendUrl();
-    var secret = getSecret();
-    var endpoint = backendUrl + "/api/v1/google-sheets/status";
+  var backendUrl = getBackendUrl();
+  var secret = getSecret();
+  
+  var testResult = testConnection(backendUrl, secret);
+  if (testResult.success) {
+    var data = testResult.data || {};
+    ui.alert(
+      "📊 CRM DATABASE SYNC STATUS",
+      "Status: ACTIVE (Connected)\n" +
+      "Target URL: " + backendUrl + "\n" +
+      "Sync Code: " + (data.syncCode || "N/A") + "\n" +
+      "Total Records: " + (data.recordsSynced || 0) + "\n" +
+      "Triggered By: " + (data.triggeredBy || "Admin") + "\n" +
+      "Last Synced: " + (data.completedAt || "Never") + "\n" +
+      "Message: " + (data.message || "Connection OK"),
+      ui.ButtonSet.OK
+    );
+  } else {
+    ui.alert(
+      "⚠️ Status Check Failed (HTTP " + testResult.statusCode + ")",
+      "Target URL: " + backendUrl + "\n\n" +
+      "Details: " + testResult.message,
+      ui.ButtonSet.OK
+    );
+  }
+}
 
+/**
+ * Tests connection to the backend status endpoint with given URL and Secret
+ */
+function testConnection(backendUrl, secret) {
+  try {
+    var endpoint = backendUrl + "/api/v1/google-sheets/status";
     var options = {
       method: "get",
       headers: {
@@ -569,53 +719,119 @@ function getSyncStatus() {
     };
 
     var response = UrlFetchApp.fetch(endpoint, options);
-    var json = JSON.parse(response.getContentText());
-    var data = json.data || json;
+    var statusCode = response.getResponseCode();
+    var responseText = response.getContentText();
+    var responseJson = null;
 
-    ui.alert(
-      "📊 CRM DATABASE SYNC STATUS",
-      "Sync Code: " + (data.syncCode || "N/A") + "\n" +
-      "Status: " + (data.status || "N/A") + "\n" +
-      "Total Records: " + (data.recordsSynced || 0) + "\n" +
-      "Triggered By: " + (data.triggeredBy || "Admin") + "\n" +
-      "Last Synced: " + (data.completedAt || "Never") + "\n" +
-      "Message: " + (data.message || "N/A"),
-      ui.ButtonSet.OK
-    );
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch (e) {}
+
+    if (statusCode >= 200 && statusCode < 300) {
+      return {
+        success: true,
+        statusCode: statusCode,
+        data: (responseJson && responseJson.data) ? responseJson.data : responseJson
+      };
+    } else {
+      return {
+        success: false,
+        statusCode: statusCode,
+        message: formatHttpErrorMessage(statusCode, responseText, responseJson)
+      };
+    }
   } catch (err) {
-    ui.alert("⚠️ Status Check Failed", err.message, ui.ButtonSet.OK);
+    return {
+      success: false,
+      statusCode: 0,
+      message: "Network error: " + err.message
+    };
   }
 }
 
 function configureConnection() {
   var ui = SpreadsheetApp.getUi();
   var currentUrl = getBackendUrl();
+  var currentSecret = getSecret();
   
+  // Step 1: Prompt for Backend URL
   var urlPrompt = ui.prompt(
-    "Configure Backend API URL",
-    "Enter the Spring Boot Backend URL (Leave blank to use default: " + CONFIG.DEFAULT_BACKEND_URL + "):\n\nCurrent: " + currentUrl,
+    "Configure Backend Connection (1 of 2)",
+    "Currently Active Backend URL:\n" + currentUrl + "\n\nEnter new URL (or leave blank to keep current):",
     ui.ButtonSet.OK_CANCEL
   );
 
-  if (urlPrompt.getSelectedButton() === ui.Button.OK) {
-    var newUrl = urlPrompt.getResponseText().trim();
-    if (!newUrl) {
-      newUrl = CONFIG.DEFAULT_BACKEND_URL;
-    }
-    if (newUrl.endsWith("/")) newUrl = newUrl.substring(0, newUrl.length - 1);
+  if (urlPrompt.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+
+  var newUrl = urlPrompt.getResponseText().trim();
+  if (!newUrl) {
+    newUrl = currentUrl;
+  }
+  if (newUrl.endsWith("/")) newUrl = newUrl.substring(0, newUrl.length - 1);
+
+  if (newUrl.indexOf("localhost") !== -1 || newUrl.indexOf("127.0.0.1") !== -1) {
+    ui.alert("⚠️ Invalid URL", "Google Sheets runs in the cloud and cannot access 'localhost'. Please enter your public Cloudflare tunnel or server URL.", ui.ButtonSet.OK);
+    return;
+  }
+
+  // Step 2: Prompt for Shared Secret
+  var maskedSecret = currentSecret ? (currentSecret.substring(0, 8) + "..." + currentSecret.substring(currentSecret.length - 6)) : "(None)";
+  var secretPrompt = ui.prompt(
+    "Configure Authentication Secret (2 of 2)",
+    "Current Secret: " + maskedSecret + "\n\nEnter new Shared Secret (or leave blank to keep current):",
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (secretPrompt.getSelectedButton() !== ui.Button.OK) {
+    return;
+  }
+
+  var newSecret = secretPrompt.getResponseText().trim();
+  if (!newSecret) {
+    newSecret = currentSecret;
+  }
+
+  // Step 3: Live Validation Before Saving
+  var testResult = testConnection(newUrl, newSecret);
+  if (testResult.success) {
     PropertiesService.getScriptProperties().setProperty("BACKEND_URL", newUrl);
+    PropertiesService.getScriptProperties().setProperty("SHARED_SECRET", newSecret);
+    
     var ss = getSpreadsheet();
-    updateControlPanel(ss, { message: "Backend URL updated to: " + newUrl });
-    ui.alert("✅ Backend URL updated to: " + newUrl);
+    updateControlPanel(ss, { status: "SUCCESS", message: "Connection verified and saved: " + newUrl });
+    ui.alert(
+      "✅ CONNECTION VERIFIED & SAVED",
+      "Successfully connected and authenticated with the backend!\n\n" +
+      "Active URL: " + newUrl + "\n" +
+      "Status: 200 OK",
+      ui.ButtonSet.OK
+    );
+  } else {
+    var proceed = ui.alert(
+      "⚠️ CONNECTION TEST FAILED (HTTP " + testResult.statusCode + ")",
+      "Details: " + testResult.message + "\n\n" +
+      "Do you still want to save these settings?",
+      ui.ButtonSet.YES_NO
+    );
+    if (proceed === ui.Button.YES) {
+      PropertiesService.getScriptProperties().setProperty("BACKEND_URL", newUrl);
+      PropertiesService.getScriptProperties().setProperty("SHARED_SECRET", newSecret);
+      var ss = getSpreadsheet();
+      updateControlPanel(ss, { status: "FAILED", message: "Saved unverified connection: " + newUrl });
+      ui.alert("⚠️ SAVED", "Settings saved, but connection could not be verified.", ui.ButtonSet.OK);
+    }
   }
 }
 
 function resetConnection() {
   var ui = SpreadsheetApp.getUi();
   PropertiesService.getScriptProperties().setProperty("BACKEND_URL", CONFIG.DEFAULT_BACKEND_URL);
+  PropertiesService.getScriptProperties().setProperty("SHARED_SECRET", CONFIG.DEFAULT_SECRET);
   var ss = getSpreadsheet();
-  updateControlPanel(ss, { message: "Connection reset to default: " + CONFIG.DEFAULT_BACKEND_URL });
-  ui.alert("🔄 RESET SUCCESSFUL", "Backend URL has been reset to active default:\n" + CONFIG.DEFAULT_BACKEND_URL, ui.ButtonSet.OK);
+  updateControlPanel(ss, { status: "IDLE", message: "Connection reset to default: " + CONFIG.DEFAULT_BACKEND_URL });
+  ui.alert("🔄 RESET SUCCESSFUL", "Backend URL and Secret have been reset to active defaults:\n\nURL: " + CONFIG.DEFAULT_BACKEND_URL + "\nSecret: " + CONFIG.DEFAULT_SECRET, ui.ButtonSet.OK);
 }
 
 /**
@@ -635,12 +851,12 @@ function cleanDuplicateTabs() {
   if (deletedTabs.length > 0) {
     ui.alert("🧹 CLEANUP COMPLETE", "Removed " + deletedTabs.length + " redundant tab(s):\n• " + deletedTabs.join("\n• "), ui.ButtonSet.OK);
   } else {
-    ui.alert("✅ CLEAN", "No duplicate or redundant tabs found. Your Google Sheet matches MySQL 1-to-1.", ui.ButtonSet.OK);
+    ui.alert("✅ CLEAN", "No duplicate or redundant tabs found. Your Google Sheet matches database entities.", ui.ButtonSet.OK);
   }
 }
 
 /**
- * Purges sheets that do not belong to the canonical MySQL backup table list
+ * Purges sheets that do not belong to the canonical CRM table list
  */
 function purgeRedundantSheets(ss, canonicalNames) {
   var allowedSet = {};
@@ -660,7 +876,6 @@ function purgeRedundantSheets(ss, canonicalNames) {
     var sh = sheets[s];
     var sName = sh.getName();
     if (!allowedSet[sName]) {
-      // Check if it's a default/duplicate sheet like Sheet1, Lead_Assignments_2, etc.
       if (sheets.length > 1) {
         try {
           ss.deleteSheet(sh);
@@ -670,6 +885,19 @@ function purgeRedundantSheets(ss, canonicalNames) {
     }
   }
   return deleted;
+}
+
+/**
+ * Health check / browser check endpoint
+ */
+function doGet(e) {
+  var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "ping";
+  return jsonResponse({
+    success: true,
+    message: "Calling CRM Google Apps Script Web App is active and running.",
+    action: action,
+    timestamp: Utilities.formatDate(new Date(), CONFIG.TIMEZONE, CONFIG.DATE_FORMAT)
+  });
 }
 
 /**
@@ -705,6 +933,7 @@ function doPost(e) {
     if (payload.leads) writeTableSheet(ss, "Leads", ["id", "project_id", "project_name", "name", "phone", "email", "city", "status", "business_outcome", "created_at"], payload.leads.map(function(l) { return [l.id, l.projectId, l.projectName, l.name, l.phone, l.email, l.city, l.status, l.businessOutcome, l.createdAt]; }));
     if (payload.calls) writeTableSheet(ss, "Calls", ["id", "lead_id", "lead_name", "caller_user_id", "caller_name", "phone_number", "call_direction", "call_status", "duration_seconds", "created_at"], payload.calls.map(function(c) { return [c.id, c.leadId, c.leadName, c.callerUserId, c.callerName, c.phoneNumber, c.callDirection, c.callStatus, c.durationSeconds, c.createdAt]; }));
 
+    setupDropdownValidations(ss);
     updateControlPanel(ss, { lastPull: nowStr, status: "SUCCESS", message: "Web-triggered sync completed." });
 
     return jsonResponse({ success: true, message: "CRM data synchronized successfully", syncedAt: nowStr });
@@ -719,18 +948,6 @@ function doPost(e) {
 function getBackendUrl() {
   var savedUrl = PropertiesService.getScriptProperties().getProperty("BACKEND_URL");
   var url = (savedUrl && savedUrl.trim() !== "") ? savedUrl.trim() : CONFIG.DEFAULT_BACKEND_URL;
-  // Automatically clear old/expired tunnel domains
-  if (savedUrl && (
-      savedUrl.indexOf("instructor-davis-mods-scenario") !== -1 ||
-      savedUrl.indexOf("chilly-wolves-post") !== -1 ||
-      savedUrl.indexOf("petite-fans-send") !== -1 ||
-      savedUrl.indexOf("odd-tables-rhyme") !== -1 ||
-      savedUrl.indexOf("evil-tools-allow") !== -1 ||
-      (savedUrl.indexOf("trycloudflare.com") !== -1 && savedUrl !== CONFIG.DEFAULT_BACKEND_URL)
-  )) {
-    url = CONFIG.DEFAULT_BACKEND_URL;
-    PropertiesService.getScriptProperties().setProperty("BACKEND_URL", url);
-  }
   if (!url || url.indexOf("localhost") !== -1 || url.indexOf("127.0.0.1") !== -1) {
     throw new Error(
       "Cannot use 'localhost' from Google Sheets.\n\n" +

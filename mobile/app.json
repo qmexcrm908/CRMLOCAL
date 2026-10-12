@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Calling CRM",
+    "name": "CRM Local",
     "slug": "calling-crm",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -26,11 +26,11 @@
       "expo-video"
     ],
     "extra": {
-      "apiBaseUrl": "https://procedures-anderson-importance-drivers.trycloudflare.com",
+      "apiBaseUrl": "https://superintendent-fifteen-thumbnails-herein.trycloudflare.com",
       "eas": {
-        "projectId": "19054731-661a-4d43-ae2a-de29e1f17064"
+        "projectId": "9a353143-603c-4880-8706-570cc1cc1c40"
       }
     },
-    "owner": "kishoreqmex"
+    "owner": "aravind90426"
   }
 }

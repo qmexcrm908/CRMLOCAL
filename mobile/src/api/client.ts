@@ -1,5 +1,7 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { API_BASE_URL, STORAGE_KEYS } from '../config/constants';
 
 let currentBaseUrl = API_BASE_URL;
@@ -33,16 +35,29 @@ export const apiClient: AxiosInstance = axios.create({
 // Load stored custom URL on startup
 AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_API_URL).then((storedUrl) => {
   if (storedUrl && storedUrl.trim() !== '') {
+    let cleanUrl = storedUrl.trim();
+
+    // On native mobile devices, if stored URL uses localhost, dynamically convert it to host IP
+    if (Platform.OS !== 'web' && (cleanUrl.includes('localhost') || cleanUrl.includes('127.0.0.1'))) {
+      const hostUri = Constants.expoConfig?.hostUri || (Constants as any)?.manifest?.debuggerHost;
+      if (hostUri) {
+        const hostIp = hostUri.split(':')[0];
+        if (hostIp && hostIp !== 'localhost' && hostIp !== '127.0.0.1') {
+          cleanUrl = cleanUrl.replace(/localhost|127\.0\.0\.1/g, hostIp);
+        }
+      }
+    }
+
     // On web when accessing localhost, don't let a stale remote IP override localhost
     if (
       typeof window !== 'undefined' &&
       (window.location?.hostname === 'localhost' || window.location?.hostname === '127.0.0.1') &&
-      !storedUrl.includes('localhost') &&
-      !storedUrl.includes('127.0.0.1')
+      !cleanUrl.includes('localhost') &&
+      !cleanUrl.includes('127.0.0.1')
     ) {
       return;
     }
-    setApiBaseUrl(storedUrl);
+    setApiBaseUrl(cleanUrl);
   }
 });
 

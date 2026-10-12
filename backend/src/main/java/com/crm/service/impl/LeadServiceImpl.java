@@ -283,13 +283,16 @@ public class LeadServiceImpl implements LeadService {
     public Page<LeadSummaryResponse> searchLeads(Long projectId, String status, String outcome, String search,
                                                 Boolean assignedToMe, Long assignedUserId,
                                                 Long currentUserId, boolean isAdmin, Pageable pageable) {
+        String searchPattern = (search != null && !search.trim().isEmpty())
+                ? "%" + search.trim().toLowerCase() + "%"
+                : null;
         Page<Lead> leads;
         if (Boolean.TRUE.equals(assignedToMe) || !isAdmin) {
-            leads = leadRepository.searchAssignedLeads(currentUserId, projectId, status, outcome, search, pageable);
+            leads = leadRepository.searchAssignedLeads(currentUserId, projectId, status, outcome, searchPattern, pageable);
         } else if (assignedUserId != null) {
-            leads = leadRepository.searchAssignedLeads(assignedUserId, projectId, status, outcome, search, pageable);
+            leads = leadRepository.searchAssignedLeads(assignedUserId, projectId, status, outcome, searchPattern, pageable);
         } else {
-            leads = leadRepository.searchLeads(projectId, status, outcome, search, pageable);
+            leads = leadRepository.searchLeads(projectId, status, outcome, searchPattern, pageable);
         }
 
         return leads.map(lead -> {

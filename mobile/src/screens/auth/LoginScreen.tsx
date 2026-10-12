@@ -617,7 +617,7 @@ export const LoginScreen: React.FC = () => {
               </View>
 
               {/* Title & Subtitle */}
-              <Text style={styles.brandTitle}>Calling CRM</Text>
+              <Text style={styles.brandTitle}>CRM Local</Text>
               <Text style={styles.brandSubtitle}>
                 {authMode === 'signin' ? 'Sign in to your account' : 'Request normal user access'}
               </Text>
@@ -1134,17 +1134,17 @@ export const LoginScreen: React.FC = () => {
               <View style={styles.presetButtonsRow}>
                 <TouchableOpacity
                   style={styles.presetBtn}
-                  onPress={() => setServerUrlInput('https://procedures-anderson-importance-drivers.trycloudflare.com/api/v1')}
+                  onPress={() => setServerUrlInput('https://superintendent-fifteen-thumbnails-herein.trycloudflare.com/api/v1')}
                 >
                   <Ionicons name="cloud-done-outline" size={14} color="#16A34A" />
                   <Text style={styles.presetBtnText}>Cloudflare HTTPS Tunnel (Recommended)</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.presetBtn}
-                  onPress={() => setServerUrlInput('http://192.168.1.16:8080/api/v1')}
+                  onPress={() => setServerUrlInput('http://192.168.1.6:8080/api/v1')}
                 >
                   <Ionicons name="wifi-outline" size={14} color="#2563EB" />
-                  <Text style={styles.presetBtnText}>Local Wi-Fi (192.168.1.16:8080)</Text>
+                  <Text style={styles.presetBtnText}>Local Wi-Fi (192.168.1.6:8080)</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.presetBtn}

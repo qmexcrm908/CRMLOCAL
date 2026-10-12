@@ -5,6 +5,8 @@ import com.crm.dto.response.DashboardSummaryResponse;
 import com.crm.dto.response.FollowUpResponse;
 import com.crm.mapper.CallMapper;
 import com.crm.mapper.FollowUpMapper;
+import com.crm.model.Call;
+import com.crm.model.FollowUp;
 import com.crm.repository.*;
 import com.crm.service.DashboardService;
 import lombok.RequiredArgsConstructor;
@@ -132,13 +134,18 @@ public class DashboardServiceImpl implements DashboardService {
         long interestedLeads = leadRepository.countOutcomeForUser(userId, "INTERESTED");
         long myConversions = salesRepository.countByUserId(userId);
 
-        List<FollowUpResponse> upcomingFollowUps = followUpRepository.findUpcomingFollowUps(userId, endOfDay).stream()
+        List<FollowUp> upcomingList = (userId != null)
+                ? followUpRepository.findByUserIdAndStatusAndScheduledTimeGreaterThanOrderByScheduledTimeAsc(userId, "PENDING", endOfDay)
+                : followUpRepository.findByStatusAndScheduledTimeGreaterThanOrderByScheduledTimeAsc("PENDING", endOfDay);
+        List<FollowUpResponse> upcomingFollowUps = upcomingList.stream()
                 .limit(5)
                 .map(followUpMapper::toResponse)
                 .toList();
 
-        List<CallResponse> recentCalls = callRepository.searchCalls(userId, null, null, null, null, null, null, PageRequest.of(0, 5))
-                .getContent().stream()
+        List<Call> recentCallsList = (userId != null)
+                ? callRepository.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, 5))
+                : callRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(0, 5));
+        List<CallResponse> recentCalls = recentCallsList.stream()
                 .map(callMapper::toResponse)
                 .toList();
 

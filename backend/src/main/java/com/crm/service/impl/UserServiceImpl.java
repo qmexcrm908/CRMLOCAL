@@ -447,7 +447,9 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public Page<UserResponse> searchUsers(String search, String role, String status, Pageable pageable) {
-        String cleanSearch = (search != null && !search.trim().isEmpty()) ? search.trim() : null;
+        String cleanSearch = (search != null && !search.trim().isEmpty())
+                ? "%" + search.trim().toLowerCase() + "%"
+                : null;
 
         String cleanRole = null;
         if (role != null && !role.trim().isEmpty() && !role.equalsIgnoreCase("ALL")) {

@@ -20,12 +20,14 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         
-        // Explicit allowed origins from application.properties
+        // Filter out wildcard '*' from explicit origins because Spring prohibits '*' with allowCredentials(true)
         List<String> origins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
-                .filter(s -> !s.isEmpty())
+                .filter(s -> !s.isEmpty() && !s.equals("*"))
                 .toList();
-        configuration.setAllowedOrigins(origins);
+        if (!origins.isEmpty()) {
+            configuration.setAllowedOrigins(origins);
+        }
 
         // Pattern matching for React Native Web & Expo local development across any dev port and LAN IPs
         configuration.setAllowedOriginPatterns(Arrays.asList(

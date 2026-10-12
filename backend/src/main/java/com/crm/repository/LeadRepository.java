@@ -21,13 +21,16 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
 
     List<Lead> findByProjectId(Long projectId);
 
+    @Query("SELECT l FROM Lead l LEFT JOIN FETCH l.project")
+    List<Lead> findAllWithProject();
+
     @Query("SELECT l FROM Lead l WHERE " +
            "(:projectId IS NULL OR l.project.id = :projectId) AND " +
            "(:status IS NULL OR l.status = :status) AND " +
            "(:outcome IS NULL OR l.businessOutcome = :outcome) AND " +
-           "(:search IS NULL OR LOWER(l.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "  OR l.phone LIKE CONCAT('%', :search, '%') " +
-           "  OR LOWER(l.email) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "(:search IS NULL OR LOWER(l.name) LIKE :search " +
+           "  OR l.phone LIKE :search " +
+           "  OR LOWER(l.email) LIKE :search)")
     Page<Lead> searchLeads(@Param("projectId") Long projectId,
                            @Param("status") String status,
                            @Param("outcome") String outcome,
@@ -39,9 +42,9 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
            "(:projectId IS NULL OR l.project.id = :projectId) AND " +
            "(:status IS NULL OR l.status = :status) AND " +
            "(:outcome IS NULL OR l.businessOutcome = :outcome) AND " +
-           "(:search IS NULL OR LOWER(l.name) LIKE LOWER(CONCAT('%', :search, '%')) " +
-           "  OR l.phone LIKE CONCAT('%', :search, '%') " +
-           "  OR LOWER(l.email) LIKE LOWER(CONCAT('%', :search, '%')))")
+           "(:search IS NULL OR LOWER(l.name) LIKE :search " +
+           "  OR l.phone LIKE :search " +
+           "  OR LOWER(l.email) LIKE :search)")
     Page<Lead> searchAssignedLeads(@Param("userId") Long userId,
                                    @Param("projectId") Long projectId,
                                    @Param("status") String status,

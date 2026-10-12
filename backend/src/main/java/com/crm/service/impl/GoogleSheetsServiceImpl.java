@@ -168,19 +168,28 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
             addTable(headersMap, tablesMap, rowCounts, "Users", userHeaders, userRows);
 
             // 4. Leads
+            Map<Long, String> activeAssignmentUserEmailByLeadId = new HashMap<>();
+            for (LeadAssignment a : leadAssignmentRepository.findAllWithLeadAndUser()) {
+                if (Boolean.TRUE.equals(a.getIsActive()) && a.getLead() != null && a.getUser() != null) {
+                    activeAssignmentUserEmailByLeadId.put(a.getLead().getId(), a.getUser().getEmail());
+                }
+            }
+
             List<String> leadHeaders = List.of(
-                    "id", "project_id", "name", "phone", "email", "address", "city", "state",
-                    "source", "status", "business_outcome", "additional_info", "last_contacted_at",
+                    "id", "project_id", "project_name", "name", "phone", "email", "address", "city", "state",
+                    "source", "status", "assigned_to_email", "business_outcome", "additional_info", "last_contacted_at",
                     "last_call_id", "last_call_status", "last_call_duration", "total_call_count",
                     "connected_call_count", "missed_call_count", "rejected_call_count", "failed_call_count",
                     "short_call_count", "junk_call_count", "follow_up_required", "next_follow_up_at",
                     "created_at", "updated_at"
             );
             List<List<Object>> leadRows = new ArrayList<>();
-            for (Lead l : leadRepository.findAll()) {
+            for (Lead l : leadRepository.findAllWithProject()) {
+                String assignedEmail = activeAssignmentUserEmailByLeadId.getOrDefault(l.getId(), "");
                 leadRows.add(List.of(
                         l.getId(),
                         l.getProject() != null ? l.getProject().getId() : "",
+                        l.getProject() != null ? safeStr(l.getProject().getName()) : "",
                         safeStr(l.getName()),
                         safeStr(l.getPhone()),
                         safeStr(l.getEmail()),
@@ -189,6 +198,7 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
                         safeStr(l.getState()),
                         safeStr(l.getSource()),
                         safeStr(l.getStatus()),
+                        assignedEmail,
                         safeStr(l.getBusinessOutcome()),
                         safeStr(l.getAdditionalInfo()),
                         formatDate(l.getLastContactedAt()),
@@ -211,14 +221,21 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
             addTable(headersMap, tablesMap, rowCounts, "Leads", leadHeaders, leadRows);
 
             // 5. Lead_Assignments
-            List<String> assignmentHeaders = List.of("id", "lead_id", "user_id", "assigned_by", "assigned_at", "unassigned_at", "is_active");
+            List<String> assignmentHeaders = List.of(
+                    "id", "lead_id", "project_name", "lead_name", "lead_phone",
+                    "user_id", "assign_to_email", "assigned_by", "assigned_at", "unassigned_at", "is_active"
+            );
             List<List<Object>> assignmentRows = new ArrayList<>();
-            for (LeadAssignment a : leadAssignmentRepository.findAll()) {
+            for (LeadAssignment a : leadAssignmentRepository.findAllWithLeadAndUser()) {
                 assignmentRows.add(List.of(
                         a.getId(),
                         a.getLead() != null ? a.getLead().getId() : "",
+                        a.getLead() != null && a.getLead().getProject() != null ? safeStr(a.getLead().getProject().getName()) : "",
+                        a.getLead() != null ? safeStr(a.getLead().getName()) : "",
+                        a.getLead() != null ? safeStr(a.getLead().getPhone()) : "",
                         a.getUser() != null ? a.getUser().getId() : "",
-                        a.getAssignedBy() != null ? a.getAssignedBy().getId() : "",
+                        a.getUser() != null ? safeStr(a.getUser().getEmail()) : "",
+                        a.getAssignedBy() != null ? safeStr(a.getAssignedBy().getEmail()) : "",
                         formatDate(a.getAssignedAt()),
                         formatDate(a.getUnassignedAt()),
                         Boolean.TRUE.equals(a.getIsActive())
@@ -236,7 +253,7 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
                     "notes", "created_at", "updated_at"
             );
             List<List<Object>> callRows = new ArrayList<>();
-            for (Call c : callRepository.findAll()) {
+            for (Call c : callRepository.findAllWithLeadAndUser()) {
                 callRows.add(List.of(
                         c.getId(),
                         safeStr(c.getTelephonyCallId()),
@@ -376,7 +393,7 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
             // 13. Audit_Logs (Read-only historical snapshot)
             List<String> auditHeaders = List.of("id", "user_id", "entity_name", "entity_id", "action", "old_value", "new_value", "created_at");
             List<List<Object>> auditRows = new ArrayList<>();
-            for (AuditLog al : auditLogRepository.findAll()) {
+            for (AuditLog al : auditLogRepository.findAllWithUser()) {
                 auditRows.add(List.of(
                         al.getId(),
                         al.getUser() != null ? al.getUser().getId() : "",
@@ -490,20 +507,31 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
             // PHASE 1: COMPREHENSIVE VALIDATION (ALL TABLES BEFORE ANY DB MODIFICATION)
             // =========================================================================
 
-            // Candidate ID sets (Sheet IDs + Existing DB IDs)
+            // Candidate ID & Name sets (Sheet IDs + Existing DB IDs/Keys)
             Set<Long> candidateRoleIds = new HashSet<>();
             roleRepository.findAll().forEach(r -> candidateRoleIds.add(r.getId()));
             Set<String> roleNames = new HashSet<>();
 
             Set<Long> candidateProjectIds = new HashSet<>();
-            projectRepository.findAll().forEach(p -> candidateProjectIds.add(p.getId()));
+            Set<String> candidateProjectNames = new HashSet<>();
+            projectRepository.findAll().forEach(p -> {
+                candidateProjectIds.add(p.getId());
+                if (p.getName() != null) candidateProjectNames.add(p.getName().trim().toLowerCase());
+            });
 
             Set<Long> candidateUserIds = new HashSet<>();
-            userRepository.findAll().forEach(u -> candidateUserIds.add(u.getId()));
-            Set<String> userEmails = new HashSet<>();
+            Set<String> candidateUserEmails = new HashSet<>();
+            userRepository.findAll().forEach(u -> {
+                candidateUserIds.add(u.getId());
+                if (u.getEmail() != null) candidateUserEmails.add(u.getEmail().trim().toLowerCase());
+            });
 
             Set<Long> candidateLeadIds = new HashSet<>();
-            leadRepository.findAll().forEach(l -> candidateLeadIds.add(l.getId()));
+            Set<String> candidateLeadPhones = new HashSet<>();
+            leadRepository.findAll().forEach(l -> {
+                candidateLeadIds.add(l.getId());
+                if (l.getPhone() != null) candidateLeadPhones.add(l.getPhone().trim());
+            });
 
             // 1. Validate Roles
             Set<Long> seenRoleIds = new HashSet<>();
@@ -540,10 +568,12 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
                     }
                     candidateProjectIds.add(id);
                 }
+                candidateProjectNames.add(name.trim().toLowerCase());
             }
 
             // 3. Validate Users
             Set<Long> seenUserIds = new HashSet<>();
+            Set<String> seenUserEmails = new HashSet<>();
             for (int i = 0; i < userRows.size(); i++) {
                 int rowNum = i + 2;
                 Map<String, Object> row = userRows.get(i);
@@ -558,9 +588,11 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
                 if (email == null || !email.contains("@")) {
                     throw new GoogleSheetsValidationException("Users", rowNum, "email", "Invalid or missing email address: '" + email + "'.");
                 }
-                if (!userEmails.add(email.toLowerCase())) {
+                String normEmail = email.trim().toLowerCase();
+                if (!seenUserEmails.add(normEmail)) {
                     throw new GoogleSheetsValidationException("Users", rowNum, "email", "Duplicate email address '" + email + "' found in Users sheet.");
                 }
+                candidateUserEmails.add(normEmail);
                 if (id != null) {
                     if (!seenUserIds.add(id)) {
                         throw new GoogleSheetsValidationException("Users", rowNum, "id", "Duplicate primary key ID " + id + " found in Users sheet.");
@@ -578,9 +610,9 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
                 int rowNum = i + 2;
                 Map<String, Object> row = leadRows.get(i);
                 Long id = parseLong(row.get("id"));
-                Long projectId = parseLong(row.get("project_id"));
+                Long projectId = parseLong(getRowValue(row, "project_id", "projectId"));
                 String name = parseString(row.get("name"));
-                String phone = parseString(row.get("phone"));
+                String phone = parseString(getRowValue(row, "phone", "phone_number", "phoneNumber"));
 
                 if (name == null || name.isBlank()) {
                     throw new GoogleSheetsValidationException("Leads", rowNum, "name", "Lead name cannot be empty.");
@@ -588,9 +620,15 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
                 if (phone == null || phone.isBlank()) {
                     throw new GoogleSheetsValidationException("Leads", rowNum, "phone", "Lead phone number cannot be empty.");
                 }
-                if (projectId == null || !candidateProjectIds.contains(projectId)) {
+                candidateLeadPhones.add(phone.trim());
+
+                String projName = parseString(getRowValue(row, "project_name", "projectName", "project"));
+                if (projectId != null && !candidateProjectIds.contains(projectId)) {
                     throw new GoogleSheetsValidationException("Leads", rowNum, "project_id", "Project ID " + projectId + " does not exist.");
+                } else if (projectId == null && projName != null && !projName.isBlank()) {
+                    candidateProjectNames.add(projName.trim().toLowerCase());
                 }
+
                 if (id != null) {
                     if (!seenLeadIds.add(id)) {
                         throw new GoogleSheetsValidationException("Leads", rowNum, "id", "Duplicate primary key ID " + id + " found in Leads sheet.");
@@ -604,20 +642,30 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
             for (int i = 0; i < assignmentRows.size(); i++) {
                 int rowNum = i + 2;
                 Map<String, Object> row = assignmentRows.get(i);
-                Long id = parseLong(row.get("id"));
-                Long leadId = parseLong(row.get("lead_id"));
-                Long userId = parseLong(row.get("user_id"));
-                Long assignedBy = parseLong(row.get("assigned_by"));
+                Long id = parseLong(getRowValue(row, "id", "assignment_id", "assignmentId"));
+                Long leadId = parseLong(getRowValue(row, "lead_id", "leadId"));
+                Long userId = parseLong(getRowValue(row, "user_id", "userId"));
+                Long assignedBy = parseLong(getRowValue(row, "assigned_by", "assignedBy"));
+
+                String leadPhone = parseString(getRowValue(row, "lead_phone", "phone", "leadPhone", "phoneNumber", "phone_number"));
+                String userEmail = parseString(getRowValue(row, "assign_to_email", "assigned_to_email", "user_email", "email", "assignToEmail", "userEmail"));
 
                 if (id != null && !seenAssignmentIds.add(id)) {
                     throw new GoogleSheetsValidationException("Lead_Assignments", rowNum, "id", "Duplicate primary key ID " + id + " found.");
                 }
-                if (leadId == null || !candidateLeadIds.contains(leadId)) {
-                    throw new GoogleSheetsValidationException("Lead_Assignments", rowNum, "lead_id", "Lead ID " + leadId + " does not exist.");
+
+                boolean validLead = (leadId != null && candidateLeadIds.contains(leadId)) ||
+                                    (leadPhone != null && !leadPhone.isBlank() && candidateLeadPhones.contains(leadPhone.trim()));
+                if (!validLead) {
+                    throw new GoogleSheetsValidationException("Lead_Assignments", rowNum, "lead_phone", "Lead Phone '" + leadPhone + "' or Lead ID " + leadId + " does not exist.");
                 }
-                if (userId == null || !candidateUserIds.contains(userId)) {
-                    throw new GoogleSheetsValidationException("Lead_Assignments", rowNum, "user_id", "User ID " + userId + " does not exist.");
+
+                boolean validUser = (userId != null && candidateUserIds.contains(userId)) ||
+                                    (userEmail != null && !userEmail.isBlank() && candidateUserEmails.contains(userEmail.trim().toLowerCase()));
+                if (!validUser) {
+                    throw new GoogleSheetsValidationException("Lead_Assignments", rowNum, "assign_to_email", "User Email '" + userEmail + "' or User ID " + userId + " does not exist.");
                 }
+
                 if (assignedBy != null && !candidateUserIds.contains(assignedBy)) {
                     throw new GoogleSheetsValidationException("Lead_Assignments", rowNum, "assigned_by", "Assigning User ID " + assignedBy + " does not exist.");
                 }
@@ -1012,8 +1060,18 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
                 }
                 if (project == null) {
                     String projName = parseString(getRowValue(row, "project_name", "projectName", "project"));
-                    if (projName != null) {
-                        project = existingProjectsByName.get(projName.trim().toLowerCase());
+                    if (projName != null && !projName.isBlank()) {
+                        String normProj = projName.trim();
+                        project = existingProjectsByName.get(normProj.toLowerCase());
+                        if (project == null) {
+                            project = projectRepository.save(Project.builder()
+                                    .name(normProj)
+                                    .description("Auto-created from Google Sheet sync")
+                                    .status("ACTIVE")
+                                    .build());
+                            existingProjectsByName.put(normProj.toLowerCase(), project);
+                            sheetIdToProject.put(project.getId(), project);
+                        }
                     }
                 }
                 if (project == null) {
@@ -1107,9 +1165,53 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
                     if (sId != null) sheetIdToLead.put(sId, l);
                     sheetIdToLead.put(l.getId(), l);
                 }
+
+                // Check for inline lead allocation (assigned_to / employee_email / assigned_employee)
+                for (Map<String, Object> row : leadRows) {
+                    String phone = parseString(getRowValue(row, "phone", "phone_number", "phoneNumber"));
+                    String assignedEmp = parseString(getRowValue(row, "assigned_to", "assigned_employee", "employee_id", "employee_email", "assigned_user", "assigned_user_id", "user_id", "agent", "assigned_to_email"));
+                    if (phone != null && assignedEmp != null && !assignedEmp.isBlank()) {
+                        Lead savedLead = existingLeadsByPhone.get(phone.trim());
+                        if (savedLead != null) {
+                            String normEmp = assignedEmp.trim();
+                            User targetUser = existingUsersByEmail.get(normEmp.toLowerCase());
+                            if (targetUser == null) {
+                                for (User u : existingUsersById.values()) {
+                                    if ((u.getId() != null && u.getId().toString().equalsIgnoreCase(normEmp)) ||
+                                        (u.getName() != null && u.getName().equalsIgnoreCase(normEmp))) {
+                                        targetUser = u;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (targetUser != null) {
+                                boolean alreadyAssigned = false;
+                                for (LeadAssignment la : leadAssignmentRepository.findByLeadIdOrderByAssignedAtDesc(savedLead.getId())) {
+                                    if (la.getUser() != null && la.getUser().getId().equals(targetUser.getId()) && Boolean.TRUE.equals(la.getIsActive())) {
+                                        alreadyAssigned = true;
+                                    } else if (Boolean.TRUE.equals(la.getIsActive())) {
+                                        la.setIsActive(false);
+                                        la.setUnassignedAt(LocalDateTime.now());
+                                        leadAssignmentRepository.save(la);
+                                    }
+                                }
+                                if (!alreadyAssigned) {
+                                    leadAssignmentRepository.save(LeadAssignment.builder()
+                                            .lead(savedLead)
+                                            .user(targetUser)
+                                            .assignedBy(admin)
+                                            .isActive(true)
+                                            .assignedAt(LocalDateTime.now())
+                                            .build());
+                                }
+                            }
+                        }
+                    }
+                }
             }
             int updatedLeads = toSaveLeads.size();
             recordsUpdated.put("Leads", updatedLeads);
+
 
             // 5. Lead_Assignments
             Map<Long, LeadAssignment> existingAssignmentsById = new HashMap<>();
@@ -1122,16 +1224,37 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
                 Long userId = parseLong(getRowValue(row, "user_id", "userId"));
                 Long assignedById = parseLong(getRowValue(row, "assigned_by", "assignedBy"));
                 Boolean isActive = parseBoolean(getRowValue(row, "is_active", "isActive"));
+                if (isActive == null) isActive = true;
                 LocalDateTime assignedAt = parseDateTime(getRowValue(row, "assigned_at", "assignedAt"));
                 if (assignedAt == null) assignedAt = LocalDateTime.now();
                 LocalDateTime unassignedAt = parseDateTime(getRowValue(row, "unassigned_at", "unassignedAt"));
 
+                String leadPhone = parseString(getRowValue(row, "lead_phone", "phone", "leadPhone", "phoneNumber", "phone_number"));
+                String userEmail = parseString(getRowValue(row, "assign_to_email", "assigned_to_email", "user_email", "email", "assignToEmail", "userEmail"));
+
                 Lead lead = leadId != null ? sheetIdToLead.get(leadId) : null;
+                if (lead == null && leadPhone != null && !leadPhone.isBlank()) {
+                    lead = existingLeadsByPhone.get(leadPhone.trim());
+                }
+
                 User user = userId != null ? sheetIdToUser.get(userId) : null;
+                if (user == null && userEmail != null && !userEmail.isBlank()) {
+                    user = existingUsersByEmail.get(userEmail.trim().toLowerCase());
+                }
+
                 User assignedBy = assignedById != null ? sheetIdToUser.get(assignedById) : null;
                 if (assignedBy == null) assignedBy = admin;
 
                 if (lead != null && user != null) {
+                    // Deactivate previous active assignment for this lead if assigning to a new target user
+                    for (LeadAssignment prev : leadAssignmentRepository.findByLeadIdOrderByAssignedAtDesc(lead.getId())) {
+                        if (Boolean.TRUE.equals(prev.getIsActive()) && !prev.getUser().getId().equals(user.getId())) {
+                            prev.setIsActive(false);
+                            prev.setUnassignedAt(LocalDateTime.now());
+                            leadAssignmentRepository.save(prev);
+                        }
+                    }
+
                     LeadAssignment assignment = (id != null) ? existingAssignmentsById.get(id) : null;
                     if (assignment != null) {
                         assignment.setLead(lead);
@@ -1813,9 +1936,18 @@ public class GoogleSheetsServiceImpl implements GoogleSheetsService {
     }
 
     private String parseString(Object val) {
+        return parseString(val, 255);
+    }
+
+    private String parseString(Object val, int maxLength) {
         if (val == null) return null;
         String s = val.toString().trim();
-        return s.isEmpty() || s.equalsIgnoreCase("null") ? null : s;
+        if (s.isEmpty() || s.equalsIgnoreCase("null")) return null;
+        if (maxLength > 0 && s.length() > maxLength) {
+            log.warn("Truncating string value exceeding {} chars: '{}...'", maxLength, s.substring(0, Math.min(30, s.length())));
+            return s.substring(0, maxLength);
+        }
+        return s;
     }
 
     private BigDecimal parseBigDecimal(Object val) {

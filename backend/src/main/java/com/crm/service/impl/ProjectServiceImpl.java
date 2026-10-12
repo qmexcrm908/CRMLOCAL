@@ -118,7 +118,10 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     @Transactional(readOnly = true)
     public Page<ProjectResponse> searchProjects(String search, String status, Pageable pageable) {
-        return projectRepository.searchProjects(search, status, pageable)
+        String searchPattern = (search != null && !search.trim().isEmpty())
+                ? "%" + search.trim().toLowerCase() + "%"
+                : null;
+        return projectRepository.searchProjects(searchPattern, status, pageable)
                 .map(this::getProjectStatsResponse);
     }
 

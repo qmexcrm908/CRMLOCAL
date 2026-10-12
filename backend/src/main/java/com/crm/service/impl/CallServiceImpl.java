@@ -181,8 +181,42 @@ public class CallServiceImpl implements CallService {
     @Transactional(readOnly = true)
     public Page<CallResponse> searchCalls(Long userId, Long leadId, Long projectId, String status, String outcome,
                                           LocalDateTime startDate, LocalDateTime endDate, Pageable pageable) {
-        return callRepository.searchCalls(userId, leadId, projectId, status, outcome, startDate, endDate, pageable)
-                .map(callMapper::toResponse);
+        org.springframework.data.jpa.domain.Specification<Call> spec = (root, query, cb) -> {
+            java.util.List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
+            if (userId != null) {
+                predicates.add(cb.equal(root.get("user").get("id"), userId));
+            }
+            if (leadId != null) {
+                predicates.add(cb.equal(root.get("lead").get("id"), leadId));
+            }
+            if (projectId != null) {
+                predicates.add(cb.equal(root.get("lead").get("project").get("id"), projectId));
+            }
+            if (status != null && !status.trim().isEmpty()) {
+                String trimmed = status.trim();
+                if ("CONNECTED".equalsIgnoreCase(trimmed)) {
+                    predicates.add(cb.or(
+                            cb.equal(root.get("callStatus"), "CONNECTED"),
+                            cb.isTrue(root.get("isConnected")),
+                            cb.gt(root.get("durationSeconds"), 0)
+                    ));
+                } else {
+                    predicates.add(cb.equal(root.get("callStatus"), trimmed));
+                }
+            }
+            if (outcome != null && !outcome.trim().isEmpty()) {
+                predicates.add(cb.equal(root.get("businessOutcome"), outcome.trim()));
+            }
+            if (startDate != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), startDate));
+            }
+            if (endDate != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), endDate));
+            }
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
+
+        return callRepository.findAll(spec, pageable).map(callMapper::toResponse);
     }
 
     @Override

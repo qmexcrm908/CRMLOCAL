@@ -11,11 +11,11 @@ import Constants from 'expo-constants';
  * 4. Constants.expoConfig?.extra?.apiBaseUrl (dynamic app.config.js injection)
  * 5. (Constants.manifest as any)?.extra?.apiBaseUrl (Expo manifest fallback)
  */
-const DEFAULT_PROD_URL = 'https://procedures-anderson-importance-drivers.trycloudflare.com';
+const DEFAULT_PROD_URL = 'https://superintendent-fifteen-thumbnails-herein.trycloudflare.com';
 
 const getRawEnvBaseUrl = (): string => {
   // 1. Explicit environment variable (.env) takes highest priority
-  const envUrl =
+  let envUrl =
     process.env.EXPO_PUBLIC_API_BASE_URL ||
     process.env.API_BASE_URL ||
     Constants.expoConfig?.extra?.apiBaseUrl ||
@@ -23,19 +23,36 @@ const getRawEnvBaseUrl = (): string => {
     (Constants.manifest as any)?.extra?.apiBaseUrl;
 
   if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
-    return envUrl.trim();
-  }
-
-  // 2. If running in a web browser without env var
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+    envUrl = envUrl.trim();
+  } else if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
     const { hostname } = window.location;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      return 'http://localhost:8080';
+      envUrl = 'http://localhost:8080';
+    } else {
+      envUrl = DEFAULT_PROD_URL;
+    }
+  } else {
+    envUrl = DEFAULT_PROD_URL;
+  }
+
+  // 2. On physical mobile devices (Android/iOS), 'localhost' points to the device itself.
+  // Automatically replace 'localhost' or '127.0.0.1' with Metro server host IP address if available.
+  if (Platform.OS !== 'web' && (envUrl.includes('localhost') || envUrl.includes('127.0.0.1'))) {
+    const hostUri =
+      Constants.expoConfig?.hostUri ||
+      (Constants as any)?.manifest2?.extra?.expoGo?.developer?.tool ||
+      (Constants as any)?.manifest?.debuggerHost ||
+      (Constants as any)?.developer?.tool;
+
+    if (hostUri) {
+      const hostIp = hostUri.split(':')[0];
+      if (hostIp && hostIp !== 'localhost' && hostIp !== '127.0.0.1') {
+        envUrl = envUrl.replace(/localhost|127\.0\.0\.1/g, hostIp);
+      }
     }
   }
 
-  // 3. Fallback to production Render URL
-  return DEFAULT_PROD_URL;
+  return envUrl;
 };
 
 // Normalize base URL to ensure clean /api/v1 prefix

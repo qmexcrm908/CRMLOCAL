@@ -14,7 +14,7 @@ import java.util.List;
 public interface ProjectRepository extends JpaRepository<Project, Long> {
     java.util.Optional<Project> findByName(String name);
     @Query("SELECT p FROM Project p WHERE " +
-           "(:search IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%'))) AND " +
+           "(:search IS NULL OR LOWER(p.name) LIKE :search) AND " +
            "(:status IS NULL OR p.status = :status)")
     Page<Project> searchProjects(@Param("search") String search,
                                  @Param("status") String status,

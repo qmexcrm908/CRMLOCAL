@@ -506,7 +506,7 @@ export const SettingsScreen: React.FC = () => {
             <View style={styles.embeddedForm}>
               <View style={styles.infoRow}>
                 <Text style={styles.infoKey}>Application</Text>
-                <Text style={styles.infoValue}>Calling CRM Mobile v2.4.0</Text>
+                <Text style={styles.infoValue}>CRM Local Mobile v2.4.0</Text>
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoKey}>Active Role</Text>

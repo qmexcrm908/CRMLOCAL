@@ -13,8 +13,8 @@
         "buildType": "apk"
       },
       "env": {
-        "API_BASE_URL": "https://procedures-anderson-importance-drivers.trycloudflare.com",
-        "EXPO_PUBLIC_API_BASE_URL": "https://procedures-anderson-importance-drivers.trycloudflare.com"
+        "API_BASE_URL": "https://superintendent-fifteen-thumbnails-herein.trycloudflare.com",
+        "EXPO_PUBLIC_API_BASE_URL": "https://superintendent-fifteen-thumbnails-herein.trycloudflare.com"
       }
     },
     "production": {

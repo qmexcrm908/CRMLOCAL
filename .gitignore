@@ -11,3 +11,9 @@ firebase-service-account*.json
 # Build & OS
 .DS_Store
 Thumbs.db
+
+# Database dumps & local scratch
+*.sql
+scratch/
+*.apk
+setup_mac_server.sh

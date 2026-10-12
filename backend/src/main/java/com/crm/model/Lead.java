@@ -29,10 +29,10 @@ public class Lead {
     @JoinColumn(name = "project_id", nullable = false)
     private Project project;
 
-    @Column(nullable = false, length = 100)
+    @Column(nullable = false, length = 255)
     private String name;
 
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 50)
     private String phone;
 
     @Column(length = 150)

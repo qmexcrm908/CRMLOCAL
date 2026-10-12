@@ -4,6 +4,7 @@ import com.crm.model.Call;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -12,8 +13,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
-public interface CallRepository extends JpaRepository<Call, Long> {
+public interface CallRepository extends JpaRepository<Call, Long>, JpaSpecificationExecutor<Call> {
     List<Call> findByLeadIdOrderByCreatedAtDesc(Long leadId);
+
+    List<Call> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+    List<Call> findAllByOrderByCreatedAtDesc(Pageable pageable);
+
+    @Query("SELECT c FROM Call c LEFT JOIN FETCH c.lead l LEFT JOIN FETCH c.user u LEFT JOIN FETCH l.project")
+    List<Call> findAllWithLeadAndUser();
 
     java.util.Optional<Call> findByTelephonyCallId(String telephonyCallId);
 
@@ -25,9 +32,7 @@ public interface CallRepository extends JpaRepository<Call, Long> {
            "(:userId IS NULL OR c.user.id = :userId) AND " +
            "(:leadId IS NULL OR l.id = :leadId) AND " +
            "(:projectId IS NULL OR l.project.id = :projectId) AND " +
-           "(:status IS NULL OR " +
-           "  (:status = 'CONNECTED' AND (c.callStatus = 'CONNECTED' OR c.isConnected = true OR c.durationSeconds > 0)) OR " +
-           "  (:status <> 'CONNECTED' AND c.callStatus = :status)) AND " +
+           "(:status IS NULL OR c.callStatus = :status OR (:status = 'CONNECTED' AND (c.isConnected = true OR c.durationSeconds > 0))) AND " +
            "(:outcome IS NULL OR c.businessOutcome = :outcome) AND " +
            "(:startDate IS NULL OR c.createdAt >= :startDate) AND " +
            "(:endDate IS NULL OR c.createdAt <= :endDate)")
