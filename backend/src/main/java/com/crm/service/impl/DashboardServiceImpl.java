@@ -56,38 +56,55 @@ public class DashboardServiceImpl implements DashboardService {
 
         long totalCalls = callRepository.count();
         long connectedCalls = callRepository.countTotalConnectedCalls();
-        long missedCalls = callRepository.countByCallStatus("MISSED");
-        long noAnswerCalls = callRepository.countByCallStatus("NO_ANSWER");
-        long busyCalls = callRepository.countByCallStatus("BUSY");
+
+        Map<String, Long> callStatusMap = new HashMap<>();
+        for (Object[] row : callRepository.countCallsByStatusGroup()) {
+            if (row != null && row[0] != null) {
+                callStatusMap.put(row[0].toString(), ((Number) row[1]).longValue());
+            }
+        }
+        long missedCalls = callStatusMap.getOrDefault("MISSED", 0L);
+        long noAnswerCalls = callStatusMap.getOrDefault("NO_ANSWER", 0L);
+        long busyCalls = callStatusMap.getOrDefault("BUSY", 0L);
 
         // Calls logged today (org-wide)
         LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
         LocalDateTime endOfDay = LocalDate.now().atTime(LocalTime.MAX);
         long callsToday = callRepository.countByCreatedAtBetween(startOfDay, endOfDay);
 
-        long interestedLeads = leadRepository.countByBusinessOutcome("INTERESTED");
         long followUpsPending = followUpRepository.countByStatus("PENDING");
         long overdueFollowUps = followUpRepository.countByStatusAndScheduledTimeLessThan("PENDING", LocalDateTime.now());
         long convertedLeads = salesRepository.count();
         BigDecimal totalRevenue = salesRepository.sumTotalDealValue();
 
         Map<String, Long> statusMap = new HashMap<>();
-        statusMap.put("NEW", leadRepository.countByStatus("NEW"));
-        statusMap.put("CONTACTED", leadRepository.countByStatus("CONTACTED"));
-        statusMap.put("IN_PROGRESS", leadRepository.countByStatus("IN_PROGRESS"));
-        statusMap.put("FOLLOW_UP", leadRepository.countByStatus("FOLLOW_UP"));
-        statusMap.put("CONVERTED", leadRepository.countByStatus("CONVERTED"));
-        statusMap.put("CLOSED", leadRepository.countByStatus("CLOSED"));
+        statusMap.put("NEW", 0L);
+        statusMap.put("CONTACTED", 0L);
+        statusMap.put("IN_PROGRESS", 0L);
+        statusMap.put("FOLLOW_UP", 0L);
+        statusMap.put("CONVERTED", 0L);
+        statusMap.put("CLOSED", 0L);
+        for (Object[] row : leadRepository.countLeadsByStatusGroup()) {
+            if (row != null && row[0] != null) {
+                statusMap.put(row[0].toString(), ((Number) row[1]).longValue());
+            }
+        }
 
         Map<String, Long> outcomeMap = new HashMap<>();
-        outcomeMap.put("INTERESTED", interestedLeads);
-        outcomeMap.put("NOT_INTERESTED", leadRepository.countByBusinessOutcome("NOT_INTERESTED"));
-        outcomeMap.put("FOLLOW_UP", leadRepository.countByBusinessOutcome("FOLLOW_UP"));
-        outcomeMap.put("WRONG_NUMBER", leadRepository.countByBusinessOutcome("WRONG_NUMBER"));
-        outcomeMap.put("JUNK", leadRepository.countByBusinessOutcome("JUNK"));
+        outcomeMap.put("INTERESTED", 0L);
+        outcomeMap.put("NOT_INTERESTED", 0L);
+        outcomeMap.put("FOLLOW_UP", 0L);
+        outcomeMap.put("WRONG_NUMBER", 0L);
+        outcomeMap.put("JUNK", 0L);
         outcomeMap.put("CONVERTED", convertedLeads);
+        for (Object[] row : leadRepository.countLeadsByOutcomeGroup()) {
+            if (row != null && row[0] != null) {
+                outcomeMap.put(row[0].toString(), ((Number) row[1]).longValue());
+            }
+        }
+        long interestedLeads = outcomeMap.getOrDefault("INTERESTED", 0L);
 
-        List<CallResponse> recentCalls = callRepository.findAll(PageRequest.of(0, 5)).getContent().stream()
+        List<CallResponse> recentCalls = callRepository.findRecentCallsWithLeadAndUser(PageRequest.of(0, 5)).stream()
                 .map(callMapper::toResponse)
                 .toList();
 

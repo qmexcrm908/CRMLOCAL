@@ -56,6 +56,12 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     long countByStatus(String status);
     long countByBusinessOutcome(String businessOutcome);
 
+    @Query("SELECT l.status, COUNT(l) FROM Lead l GROUP BY l.status")
+    List<Object[]> countLeadsByStatusGroup();
+
+    @Query("SELECT l.businessOutcome, COUNT(l) FROM Lead l WHERE l.businessOutcome IS NOT NULL GROUP BY l.businessOutcome")
+    List<Object[]> countLeadsByOutcomeGroup();
+
     @Query("SELECT COUNT(l) FROM Lead l WHERE l.id IN (SELECT a.lead.id FROM LeadAssignment a WHERE a.isActive = true)")
     long countAssignedLeads();
 

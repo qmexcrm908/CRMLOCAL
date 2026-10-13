@@ -22,6 +22,12 @@ public interface CallRepository extends JpaRepository<Call, Long>, JpaSpecificat
     @Query("SELECT c FROM Call c LEFT JOIN FETCH c.lead l LEFT JOIN FETCH c.user u LEFT JOIN FETCH l.project")
     List<Call> findAllWithLeadAndUser();
 
+    @Query("SELECT c FROM Call c LEFT JOIN FETCH c.lead l LEFT JOIN FETCH c.user u ORDER BY c.createdAt DESC")
+    List<Call> findRecentCallsWithLeadAndUser(Pageable pageable);
+
+    @Query("SELECT c.callStatus, COUNT(c) FROM Call c GROUP BY c.callStatus")
+    List<Object[]> countCallsByStatusGroup();
+
     java.util.Optional<Call> findByTelephonyCallId(String telephonyCallId);
 
     boolean existsByTelephonyCallId(String telephonyCallId);
