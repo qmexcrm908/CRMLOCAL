@@ -2,7 +2,7 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import { API_BASE_URL, STORAGE_KEYS } from '../config/constants';
+import { API_BASE_URL, STORAGE_KEYS, normalizeApiUrl } from '../config/constants';
 
 let currentBaseUrl = API_BASE_URL;
 let activeAuthToken: string | null = null;
@@ -13,8 +13,9 @@ export const setApiAuthToken = (token: string | null) => {
 };
 
 export const setApiBaseUrl = (url: string) => {
-  currentBaseUrl = url;
-  apiClient.defaults.baseURL = url;
+  const normalized = normalizeApiUrl(url);
+  currentBaseUrl = normalized;
+  apiClient.defaults.baseURL = normalized;
 };
 
 export const setLogoutHandler = (callback: () => void) => {
@@ -35,7 +36,7 @@ export const apiClient: AxiosInstance = axios.create({
 // Load stored custom URL on startup
 AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_API_URL).then((storedUrl) => {
   if (storedUrl && storedUrl.trim() !== '') {
-    let cleanUrl = storedUrl.trim();
+    let cleanUrl = normalizeApiUrl(storedUrl.trim());
 
     // On native mobile devices, if stored URL uses localhost, dynamically convert it to host IP
     if (Platform.OS !== 'web' && (cleanUrl.includes('localhost') || cleanUrl.includes('127.0.0.1'))) {
@@ -58,6 +59,11 @@ AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_API_URL).then((storedUrl) => {
       return;
     }
     setApiBaseUrl(cleanUrl);
+
+    // Self-heal storage if it had corrupted path suffixes
+    if (cleanUrl !== storedUrl) {
+      AsyncStorage.setItem(STORAGE_KEYS.CUSTOM_API_URL, cleanUrl).catch(() => {});
+    }
   }
 });
 

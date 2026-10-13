@@ -55,10 +55,18 @@ const getRawEnvBaseUrl = (): string => {
   return envUrl;
 };
 
-// Normalize base URL to ensure clean /api/v1 prefix
-const normalizeApiUrl = (url: string): string => {
-  const trimmed = url.trim().replace(/\/+$/, '');
-  return trimmed.endsWith('/api/v1') ? trimmed : `${trimmed}/api/v1`;
+// Normalize base URL to ensure clean /api/v1 prefix without trailing endpoint artifacts
+export const normalizeApiUrl = (url: string): string => {
+  if (!url) return '';
+  let trimmed = url.trim().replace(/\/+$/, '');
+  // Strip common mistaken endpoint suffixes
+  trimmed = trimmed.replace(/\/api\/v1\/health\/?$/i, '');
+  trimmed = trimmed.replace(/\/health\/?$/i, '');
+  trimmed = trimmed.replace(/\/auth\/login\/?$/i, '');
+  trimmed = trimmed.replace(/\/login\/?$/i, '');
+  trimmed = trimmed.replace(/\/api\/v1\/?$/i, '');
+  trimmed = trimmed.replace(/\/+$/, '');
+  return `${trimmed}/api/v1`;
 };
 
 export const API_BASE_URL = normalizeApiUrl(getRawEnvBaseUrl());

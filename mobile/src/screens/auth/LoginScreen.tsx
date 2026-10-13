@@ -26,7 +26,7 @@ import { useAuth } from '../../context/AuthContext';
 import { RootStackParamList } from '../../types';
 import { getApiBaseUrl, setApiBaseUrl } from '../../api/client';
 import { authApi } from '../../api/authApi';
-import { STORAGE_KEYS } from '../../config/constants';
+import { STORAGE_KEYS, normalizeApiUrl } from '../../config/constants';
 
 export const LoginScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -363,8 +363,7 @@ export const LoginScreen: React.FC = () => {
   const handleTestConnection = async (urlToTest: string) => {
     setTestStatus({ loading: true, message: undefined });
     try {
-      const trimmed = urlToTest.trim().replace(/\/+$/, '');
-      const cleanUrl = trimmed.endsWith('/api/v1') ? trimmed : `${trimmed}/api/v1`;
+      const cleanUrl = normalizeApiUrl(urlToTest);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
 
@@ -401,13 +400,14 @@ export const LoginScreen: React.FC = () => {
   };
 
   const handleSaveServerUrl = async () => {
-    const trimmed = serverUrlInput.trim().replace(/\/+$/, '');
-    if (!trimmed) {
+    const raw = serverUrlInput.trim();
+    if (!raw) {
       Alert.alert('Invalid URL', 'Please enter a valid backend server URL.');
       return;
     }
-    const cleanUrl = trimmed.endsWith('/api/v1') ? trimmed : `${trimmed}/api/v1`;
+    const cleanUrl = normalizeApiUrl(raw);
     setApiBaseUrl(cleanUrl);
+    setServerUrlInput(cleanUrl);
     await AsyncStorage.setItem(STORAGE_KEYS.CUSTOM_API_URL, cleanUrl);
     setShowServerModal(false);
     setErrorMessage('');
