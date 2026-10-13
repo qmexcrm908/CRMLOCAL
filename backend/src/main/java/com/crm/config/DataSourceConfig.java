@@ -82,10 +82,10 @@ public class DataSourceConfig {
             if (StringUtils.hasText(query)) {
                 jdbcUrl += "?" + query;
                 if (!query.contains("sslmode=")) {
-                    jdbcUrl += "&sslmode=require";
+                    jdbcUrl += host != null && host.contains(".render.com") ? "&sslmode=require" : "&sslmode=prefer";
                 }
             } else {
-                jdbcUrl += "?sslmode=require";
+                jdbcUrl += host != null && host.contains(".render.com") ? "?sslmode=require" : "?sslmode=prefer";
             }
             if (!jdbcUrl.contains("reWriteBatchedInserts=")) {
                 jdbcUrl += (jdbcUrl.contains("?") ? "&" : "?") + "reWriteBatchedInserts=true";
